@@ -673,10 +673,10 @@ static BlockAIOCB *rbd_start_aio(BlockDriverState *bs,
 	     if(!encrypt_buf)
 		goto failed;
 
-	     len = sbs_encrypt ((unsigned char *) acb->bounce, strlen((char*)acb->bounce),
+	     len = sbs_encrypt ((unsigned char *) acb->bounce, qiov->size,
 				s->cipher_key,
                                 s->iv, (unsigned char *) encrypt_buf);
-             if (len)
+             if (len < 0)
 		error_report("failed to encrypt\n");
 	     /* swap acb->bounce with encrypted buf and free acb->bounce */
 	     tmp_buf = acb->bounce;
