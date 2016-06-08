@@ -100,6 +100,8 @@ typedef struct BDRVRBDState {
     char name[RBD_MAX_IMAGE_NAME_SIZE];
     char *snap;
     bool encrypted;
+    EVP_CIPHER_CTX *encrypt_ctx;
+    EVP_CIPHER_CTX *decrypt_ctx;
     unsigned char *cipher_key;
     unsigned char *iv;
 } BDRVRBDState;
@@ -413,7 +415,8 @@ static void qemu_rbd_complete_aio(RADOSCB *rcb)
 		goto failed;
             len = sbs_decrypt((unsigned char *) acb->bounce, rcb->size,
                               acb->s->cipher_key,
-                              acb->s->iv, (unsigned char *)decrypt_buf);
+                              acb->s->iv, (unsigned char *)decrypt_buf,
+			      acb->s->decrypt_ctx);
 	    if (len < 0 )
 	       error_report("failed to decrypt\n");
 	
@@ -537,9 +540,14 @@ static int qemu_rbd_open(BlockDriverState *bs, QDict *options, int flags,
     /* parse opts and figure out if volume is encrypted
        allocate space for key and iv  and save them */
     if (s->encrypted == 1) {
+
         /* for test set the key */
         s->cipher_key = (unsigned char *) g_strdup("7190c8bc27ac4a1bbe1ab1cf55cf3b097190c8bc27ac4a1bbe1ab1cf55cf3b09");
         s->iv = (unsigned char *) g_strdup("dcbfdd41e40f74a2");
+	
+	/* initialize the engines */
+	sbs_init_decrypt_engine(s->decrypt_ctx, s->cipher_key, s->iv);
+	sbs_init_encrypt_engine(s->encrypt_ctx, s->cipher_key, s->iv);
     }
 
     qemu_opts_del(opts);
@@ -567,6 +575,10 @@ static void qemu_rbd_close(BlockDriverState *bs)
     rados_ioctx_destroy(s->io_ctx);
     g_free(s->snap);
     if (s->encrypted == 1) {
+	if (s->encrypt_ctx)
+	    sbs_del_crypto_engine(s->encrypt_ctx);
+	if (s->decrypt_ctx)
+	    sbs_del_crypto_engine(s->decrypt_ctx);
 	if (s->cipher_key)
 	    g_free(s->cipher_key);
         if (s->iv)
@@ -675,7 +687,8 @@ static BlockAIOCB *rbd_start_aio(BlockDriverState *bs,
 
 	     len = sbs_encrypt ((unsigned char *) acb->bounce, qiov->size,
 				s->cipher_key,
-                                s->iv, (unsigned char *) encrypt_buf);
+                                s->iv, (unsigned char *) encrypt_buf,
+				s->encrypt_ctx);
              if (len < 0)
 		error_report("failed to encrypt\n");
 	     /* swap acb->bounce with encrypted buf and free acb->bounce */

@@ -7,21 +7,13 @@ void error_handler(void)
 }
 
 int sbs_encrypt(unsigned char *plaintext, int plaintext_len, unsigned char *key,
-  unsigned char *iv, unsigned char *ciphertext)
+  unsigned char *iv, unsigned char *ciphertext, EVP_CIPHER_CTX *ctx)
 {
-	  EVP_CIPHER_CTX *ctx;
-
 	  int len;
 
 	  int ciphertext_len;
 
 	  /* Create and initialise the context */
-	  if(!(ctx = EVP_CIPHER_CTX_new()))
-		 error_handler();
-
-	  if(EVP_EncryptInit_ex(ctx, EVP_aes_256_xts(), NULL, key, iv) != 1)
-	  	  error_handler();
-
 	  if(EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, plaintext_len) != 1)
 	    	error_handler();
 
@@ -32,25 +24,15 @@ int sbs_encrypt(unsigned char *plaintext, int plaintext_len, unsigned char *key,
 
 	  ciphertext_len += len;
 
-	  EVP_CIPHER_CTX_free(ctx);
-
 	  return ciphertext_len;
 }
 
 int sbs_decrypt(unsigned char *ciphertext, int ciphertext_len, unsigned char *key,
-  unsigned char *iv, unsigned char *plaintext)
+  unsigned char *iv, unsigned char *plaintext, EVP_CIPHER_CTX *ctx)
 {
-	  EVP_CIPHER_CTX *ctx;
-
 	  int len;
 
 	  int plaintext_len;
-
-	  if(!(ctx = EVP_CIPHER_CTX_new()))
-		error_handler();
-
-	  if(EVP_DecryptInit_ex(ctx, EVP_aes_256_xts(), NULL, key, iv) != 1)
-	        error_handler();
 
 	  if(EVP_DecryptUpdate(ctx, plaintext, &len, ciphertext, ciphertext_len) != 1)
 	    	error_handler();
@@ -62,7 +44,33 @@ int sbs_decrypt(unsigned char *ciphertext, int ciphertext_len, unsigned char *ke
 
 	  plaintext_len += len;
 
-	  EVP_CIPHER_CTX_free(ctx);
-
 	  return plaintext_len;
+}
+
+int sbs_init_decrypt_engine(EVP_CIPHER_CTX *ctx, unsigned char *key, unsigned char* iv)
+{
+	if(!(ctx = EVP_CIPHER_CTX_new()))
+		return -1;
+
+	if(EVP_DecryptInit_ex(ctx, EVP_aes_256_xts(), NULL, key, iv) != 1)
+		return -1;
+
+	return 0;
+}
+
+int sbs_init_encrypt_engine(EVP_CIPHER_CTX *ctx, unsigned char *key, unsigned char* iv)
+{
+	if(!(ctx = EVP_CIPHER_CTX_new()))
+		return -1;
+
+	if(EVP_EncryptInit_ex(ctx, EVP_aes_256_xts(), NULL, key, iv) != 1)
+		return -1;
+
+	return 0;
+}
+
+int sbs_del_crypto_engine(EVP_CIPHER_CTX *ctx)
+{
+	EVP_CIPHER_CTX_free(ctx);
+	return 0;
 }
