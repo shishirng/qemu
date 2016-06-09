@@ -73,6 +73,7 @@ typedef struct RBDAIOCB {
     int64_t ret;
     QEMUIOVector *qiov;
     char *bounce;
+    char *read_bounce;
     RBDAIOCmd cmd;
     int64_t sector_num;
     int error;
@@ -380,7 +381,6 @@ static void qemu_rbd_complete_aio(RADOSCB *rcb)
     int64_t r;
     int len;
     int orig_size = 0;
-    char *decrypt_buf = NULL;
 
     r = rcb->ret;
 
@@ -412,25 +412,23 @@ static void qemu_rbd_complete_aio(RADOSCB *rcb)
     /* do de-encryption for read here */
     if (acb->cmd == RBD_AIO_READ && !acb->error ) {
 	if (acb->s && (acb->s->encrypted == 1)) {
-	    decrypt_buf = g_malloc (rcb->size);
-	    if (!decrypt_buf)
-		goto failed;
             len = sbs_decrypt((unsigned char *) acb->bounce, acb->ret,
                               acb->s->cipher_key,
-                              acb->s->iv, (unsigned char *)decrypt_buf,
+                              acb->s->iv, (unsigned char *)acb->read_bounce,
 			      acb->s->decrypt_ctx);
 	    if (len < 0 )
 	       error_report("failed to decrypt\n");
 	    if (orig_size)
-            	memset(decrypt_buf + orig_size, 0, acb->ret - orig_size);
-            qemu_iovec_from_buf(acb->qiov, 0, decrypt_buf, acb->qiov->size);
-	    g_free(decrypt_buf);
+            	memset(acb->read_bounce + orig_size, 0, acb->ret - orig_size);
+            qemu_iovec_from_buf(acb->qiov, 0, acb->read_bounce, acb->qiov->size);
+            qemu_vfree(acb->read_bounce);
 	} else {
             qemu_iovec_from_buf(acb->qiov, 0, acb->bounce, acb->qiov->size);
 	}
     }
-failed:
+
     qemu_vfree(acb->bounce);
+
     acb->common.cb(acb->common.opaque, (acb->ret > 0 ? 0 : acb->ret));
     acb->status = 0;
 
@@ -673,6 +671,12 @@ static BlockAIOCB *rbd_start_aio(BlockDriverState *bs,
         if (acb->bounce == NULL) {
             goto failed;
         }
+	if (s->encrypted && cmd == RBD_AIO_READ) {
+		acb->read_bounce = qemu_try_blockalign0(bs, qiov->size);
+		if (acb->read_bounce == NULL) {
+			goto failed;
+		}
+	}
     }
     acb->ret = 0;
     acb->error = 0;
@@ -745,6 +749,7 @@ failed_completion:
 failed:
     g_free(rcb);
     qemu_vfree(acb->bounce);
+    qemu_vfree(acb->read_bounce);
     qemu_aio_unref(acb);
     return NULL;
 }
