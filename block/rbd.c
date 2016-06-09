@@ -379,6 +379,7 @@ static void qemu_rbd_complete_aio(RADOSCB *rcb)
     RBDAIOCB *acb = rcb->acb;
     int64_t r;
     int len;
+    int orig_size = 0;
     char *decrypt_buf = NULL;
 
     r = rcb->ret;
@@ -400,6 +401,7 @@ static void qemu_rbd_complete_aio(RADOSCB *rcb)
             if (!acb->error) {
                 acb->ret = rcb->size;
             }
+	    orig_size = r;
         } else if (!acb->error) {
             acb->ret = r;
         }
@@ -408,18 +410,19 @@ static void qemu_rbd_complete_aio(RADOSCB *rcb)
     g_free(rcb);
 
     /* do de-encryption for read here */
-    if (acb->cmd == RBD_AIO_READ) {
+    if (acb->cmd == RBD_AIO_READ && !acb->error ) {
 	if (acb->s && (acb->s->encrypted == 1)) {
 	    decrypt_buf = g_malloc (rcb->size);
 	    if (!decrypt_buf)
 		goto failed;
-            len = sbs_decrypt((unsigned char *) acb->bounce, rcb->size,
+            len = sbs_decrypt((unsigned char *) acb->bounce, acb->ret,
                               acb->s->cipher_key,
                               acb->s->iv, (unsigned char *)decrypt_buf,
 			      acb->s->decrypt_ctx);
 	    if (len < 0 )
 	       error_report("failed to decrypt\n");
-	
+	    if (orig_size)
+            	memset(decrypt_buf + orig_size, 0, acb->ret - orig_size);
             qemu_iovec_from_buf(acb->qiov, 0, decrypt_buf, acb->qiov->size);
 	    g_free(decrypt_buf);
 	} else {
@@ -546,8 +549,8 @@ static int qemu_rbd_open(BlockDriverState *bs, QDict *options, int flags,
         s->iv = (unsigned char *) g_strdup("dcbfdd41e40f74a2");
 	
 	/* initialize the engines */
-	sbs_init_decrypt_engine(s->decrypt_ctx, s->cipher_key, s->iv);
-	sbs_init_encrypt_engine(s->encrypt_ctx, s->cipher_key, s->iv);
+	sbs_init_decrypt_engine(&s->decrypt_ctx, s->cipher_key, s->iv);
+	sbs_init_encrypt_engine(&s->encrypt_ctx, s->cipher_key, s->iv);
     }
 
     qemu_opts_del(opts);

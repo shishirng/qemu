@@ -47,25 +47,29 @@ int sbs_decrypt(unsigned char *ciphertext, int ciphertext_len, unsigned char *ke
 	  return plaintext_len;
 }
 
-int sbs_init_decrypt_engine(EVP_CIPHER_CTX *ctx, unsigned char *key, unsigned char* iv)
+int sbs_init_decrypt_engine(EVP_CIPHER_CTX **ctx, unsigned char *key, unsigned char* iv)
 {
-	if(!(ctx = EVP_CIPHER_CTX_new()))
+	EVP_CIPHER_CTX *tmp = EVP_CIPHER_CTX_new();
+	if(!tmp)
 		return -1;
 
-	if(EVP_DecryptInit_ex(ctx, EVP_aes_256_xts(), NULL, key, iv) != 1)
+	if(EVP_DecryptInit_ex(tmp, EVP_aes_256_xts(), NULL, key, iv) != 1)
 		return -1;
 
+	*ctx = tmp;
 	return 0;
 }
 
-int sbs_init_encrypt_engine(EVP_CIPHER_CTX *ctx, unsigned char *key, unsigned char* iv)
+int sbs_init_encrypt_engine(EVP_CIPHER_CTX **ctx, unsigned char *key, unsigned char* iv)
 {
-	if(!(ctx = EVP_CIPHER_CTX_new()))
+	EVP_CIPHER_CTX *tmp = EVP_CIPHER_CTX_new();
+	if(!tmp)
 		return -1;
 
-	if(EVP_EncryptInit_ex(ctx, EVP_aes_256_xts(), NULL, key, iv) != 1)
+	if(EVP_EncryptInit_ex(tmp, EVP_aes_256_xts(), NULL, key, iv) != 1)
 		return -1;
 
+	*ctx = tmp;
 	return 0;
 }
 
