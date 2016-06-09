@@ -24,7 +24,7 @@
 	url = https://github.com/qemu/sgabios.git
 [submodule "pixman"]
 	path = pixman
-	url = https://anongit.freedesktop.org/git/pixman 
+	url = http://10.140.192.133/JioCloudCompute/pixman.git 
 [submodule "dtc"]
 	path = dtc
 	url = https://github.com/qemu/dtc.git
