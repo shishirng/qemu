@@ -1,4 +1,4 @@
-qemu (2.0.0+dfsg-2ubuntu1.24) trusty-security; urgency=medium
+qemu (2.2.1+dfsg-2ubuntu1.24) trusty-security; urgency=medium
 
   * SECURITY UPDATE: denial of service via multiple eof_timers in ohci
     - debian/patches/CVE-2016-2391.patch: allocate timer only once in
