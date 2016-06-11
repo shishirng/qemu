@@ -6,45 +6,66 @@ void error_handler(void)
 	abort();
 }
 
+static int _sbs_encrypt(EVP_CIPHER_CTX *ctx,unsigned char *ciphertext, unsigned char *plaintext, int plaintext_len)
+{
+          int len = 0;
+          int ciphertext_len = 0;
+          if(EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, plaintext_len) != 1)
+                error_handler();
+
+          ciphertext_len = len;
+
+          if(EVP_EncryptFinal_ex(ctx, ciphertext + len, &len) != 1)
+                error_handler();
+
+          return ciphertext_len += len;
+
+
+}
+
 int sbs_encrypt(unsigned char *plaintext, int plaintext_len, unsigned char *key,
   unsigned char *iv, unsigned char *ciphertext, EVP_CIPHER_CTX *ctx)
 {
-	  int len;
+	  int offset = 0;
+	  int len = 0;
 
-	  int ciphertext_len;
+          while (offset < plaintext_len) {
+                len = _sbs_encrypt(ctx, ciphertext + offset , plaintext + offset, 512);
+                offset += len;
+          }
+	  return offset;
+}
 
-	  /* Create and initialise the context */
-	  if(EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, plaintext_len) != 1)
-	    	error_handler();
+static int _sbs_decrypt(EVP_CIPHER_CTX *ctx, unsigned char *ciphertext, int ciphertext_len, unsigned char *plaintext)
+{
+        int len = 0;
+        int plaintext_len = 0;
 
-	  ciphertext_len = len;
+        if(EVP_DecryptUpdate(ctx, plaintext, &len, ciphertext, ciphertext_len) != 1)
+                error_handler();
 
-	  if(EVP_EncryptFinal_ex(ctx, ciphertext + len, &len) != 1)
-		error_handler();
+          plaintext_len = len;
 
-	  ciphertext_len += len;
+          if(EVP_DecryptFinal_ex(ctx, plaintext + len, &len) != 1)
+                 error_handler();
 
-	  return ciphertext_len;
+          return plaintext_len += len;
+
+
 }
 
 int sbs_decrypt(unsigned char *ciphertext, int ciphertext_len, unsigned char *key,
   unsigned char *iv, unsigned char *plaintext, EVP_CIPHER_CTX *ctx)
 {
-	  int len;
+	  int offset = 0;
+	  int len = 0;
 
-	  int plaintext_len;
+	while (offset < ciphertext_len) {
+                len = _sbs_decrypt(ctx, ciphertext + offset, 512, plaintext + offset );
+                offset += len;
+        }
 
-	  if(EVP_DecryptUpdate(ctx, plaintext, &len, ciphertext, ciphertext_len) != 1)
-	    	error_handler();
-
-	  plaintext_len = len;
-
-	  if(EVP_DecryptFinal_ex(ctx, plaintext + len, &len) != 1)
-		 error_handler();
-
-	  plaintext_len += len;
-
-	  return plaintext_len;
+          return offset;
 }
 
 int sbs_init_decrypt_engine(EVP_CIPHER_CTX **ctx, unsigned char *key, unsigned char* iv)
