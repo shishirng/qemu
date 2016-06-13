@@ -16,7 +16,7 @@
 #include "qemu-common.h"
 #include "qemu/error-report.h"
 #include "block/block_int.h"
-
+#include "aes_xts.h"
 #include <rbd/librbd.h>
 
 /*
@@ -99,6 +99,11 @@ typedef struct BDRVRBDState {
     rbd_image_t image;
     char name[RBD_MAX_IMAGE_NAME_SIZE];
     char *snap;
+    bool encrypted;
+    EVP_CIPHER_CTX *encrypt_ctx;
+    EVP_CIPHER_CTX *decrypt_ctx;
+    unsigned char *cipher_key;
+    unsigned char *iv;
 } BDRVRBDState;
 
 static int qemu_rbd_next_tok(char *dst, int dst_len,
@@ -373,6 +378,9 @@ static void qemu_rbd_complete_aio(RADOSCB *rcb)
 {
     RBDAIOCB *acb = rcb->acb;
     int64_t r;
+    int len;
+    int orig_size = 0;
+    char *buf = NULL;
 
     r = rcb->ret;
 
@@ -393,6 +401,7 @@ static void qemu_rbd_complete_aio(RADOSCB *rcb)
             if (!acb->error) {
                 acb->ret = rcb->size;
             }
+	    orig_size = r;
         } else if (!acb->error) {
             acb->ret = r;
         }
@@ -400,10 +409,33 @@ static void qemu_rbd_complete_aio(RADOSCB *rcb)
 
     g_free(rcb);
 
+    /* do de-encryption for read here */
     if (acb->cmd == RBD_AIO_READ) {
-        qemu_iovec_from_buf(acb->qiov, 0, acb->bounce, acb->qiov->size);
+	if (!acb->error && acb->s && (acb->s->encrypted == 1)) {
+	    buf = g_malloc0(acb->qiov->size);
+	    if (!buf) {
+		error_report("Failed to alloc mem\n");
+		goto failed;
+	    }
+	    len = sbs_decrypt((unsigned char *) acb->bounce, acb->ret,
+                              acb->s->cipher_key,
+                              acb->s->iv, (unsigned char *)buf,
+			      acb->s->decrypt_ctx, BDRV_SECTOR_SIZE);
+	    if (len < 0 )
+	       error_report("failed to decrypt\n");
+
+	    /* if returned size  is < requsted size, pad with '0' */
+	    if (orig_size)
+		memset(buf + orig_size, 0, acb->ret - orig_size);
+            qemu_iovec_from_buf(acb->qiov, 0, buf, acb->qiov->size);
+            g_free(buf);
+	} else {
+            qemu_iovec_from_buf(acb->qiov, 0, acb->bounce, acb->qiov->size);
+	}
     }
+failed:
     qemu_vfree(acb->bounce);
+
     acb->common.cb(acb->common.opaque, (acb->ret > 0 ? 0 : acb->ret));
     acb->status = 0;
 
@@ -513,11 +545,28 @@ static int qemu_rbd_open(BlockDriverState *bs, QDict *options, int flags,
 
     bs->read_only = (s->snap != NULL);
 
+    /* parse opts and figure out if volume is encrypted
+       allocate space for key and iv  and save them */
+    if (s->encrypted == 1) {
+
+        /* for test set the key */
+        s->cipher_key = (unsigned char *) g_strdup("7190c8bc27ac4a1bbe1ab1cf55cf3b097190c8bc27ac4a1bbe1ab1cf55cf3b09");
+        s->iv = (unsigned char *) g_strdup("dcbfdd41e40f74a2");
+
+	/* initialize the engines */
+	sbs_init_decrypt_engine(&s->decrypt_ctx, s->cipher_key, s->iv);
+	sbs_init_encrypt_engine(&s->encrypt_ctx, s->cipher_key, s->iv);
+    }
+
     qemu_opts_del(opts);
     return 0;
 
 failed_open:
     rados_ioctx_destroy(s->io_ctx);
+    if (s->cipher_key)
+        g_free(s->cipher_key);
+    if (s->iv)
+        g_free(s->iv);
 failed_shutdown:
     rados_shutdown(s->cluster);
     g_free(s->snap);
@@ -533,6 +582,16 @@ static void qemu_rbd_close(BlockDriverState *bs)
     rbd_close(s->image);
     rados_ioctx_destroy(s->io_ctx);
     g_free(s->snap);
+    if (s->encrypted == 1) {
+	if (s->encrypt_ctx)
+	    sbs_del_crypto_engine(s->encrypt_ctx);
+	if (s->decrypt_ctx)
+	    sbs_del_crypto_engine(s->decrypt_ctx);
+	if (s->cipher_key)
+	    g_free(s->cipher_key);
+        if (s->iv)
+	    g_free(s->iv);
+    }
     rados_shutdown(s->cluster);
 }
 
@@ -603,6 +662,9 @@ static BlockAIOCB *rbd_start_aio(BlockDriverState *bs,
     int64_t off, size;
     char *buf;
     int r;
+    char *encrypt_buf = NULL;
+    char *tmp_buf = NULL;
+    int len;
 
     BDRVRBDState *s = bs->opaque;
 
@@ -623,8 +685,25 @@ static BlockAIOCB *rbd_start_aio(BlockDriverState *bs,
     acb->bh = NULL;
     acb->status = -EINPROGRESS;
 
+    /* do encryption here, for write */
     if (cmd == RBD_AIO_WRITE) {
         qemu_iovec_to_buf(acb->qiov, 0, acb->bounce, qiov->size);
+	if (acb->s->encrypted == 1) {
+	     encrypt_buf = qemu_try_blockalign(bs, qiov->size);
+	     if(!encrypt_buf)
+		goto failed;
+
+	     len = sbs_encrypt ((unsigned char *) acb->bounce, qiov->size,
+				s->cipher_key,
+                                s->iv, (unsigned char *) encrypt_buf,
+				s->encrypt_ctx, BDRV_SECTOR_SIZE);
+	     if (len < 0)
+		error_report("failed to encrypt\n");
+	     /* swap acb->bounce with encrypted buf and free acb->bounce */
+	     tmp_buf = acb->bounce;
+	     acb->bounce = encrypt_buf;
+	     qemu_vfree(tmp_buf);
+	}
     }
 
     buf = acb->bounce;
