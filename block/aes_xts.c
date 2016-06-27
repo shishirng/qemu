@@ -31,6 +31,8 @@ sbs_encrypt(unsigned char *plaintext, int plaintext_len, unsigned char *key,
 
 	while (offset < plaintext_len) {
 		len = _sbs_encrypt(ctx, ciphertext + offset, plaintext + offset, sector_size);
+		if (len < 0)
+			return -1;
 		offset += len;
 	}
 	return offset;
@@ -67,6 +69,8 @@ sbs_decrypt(unsigned char *ciphertext, int ciphertext_len, unsigned char *key,
 
 	while (offset < ciphertext_len) {
 		len = _sbs_decrypt(ctx, ciphertext + offset, sector_size, plaintext + offset);
+		if (len < 0)
+			return -1;
 		offset += len;
 	}
 

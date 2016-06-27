@@ -415,20 +415,25 @@ static void qemu_rbd_complete_aio(RADOSCB *rcb)
 	    buf = g_malloc0(acb->qiov->size);
 	    if (!buf) {
 		error_report("Failed to alloc mem\n");
+		acb->ret = -1;
+		acb->error = 1;
 		goto failed;
 	    }
 	    len = sbs_decrypt((unsigned char *) acb->bounce, acb->ret,
                               acb->s->cipher_key,
                               acb->s->iv, (unsigned char *)buf,
 			      acb->s->decrypt_ctx, BDRV_SECTOR_SIZE);
-	    if (len < 0 )
+	    if (len != acb->ret ) {
 	       error_report("failed to decrypt\n");
+	       acb->ret = -1;
+	       acb->error = 1;
+	       goto failed;
+            }
 
 	    /* if returned size  is < requsted size, pad with '0' */
 	    if (orig_size)
 		memset(buf + orig_size, 0, acb->ret - orig_size);
             qemu_iovec_from_buf(acb->qiov, 0, buf, acb->qiov->size);
-            g_free(buf);
 	} else {
             qemu_iovec_from_buf(acb->qiov, 0, acb->bounce, acb->qiov->size);
 	}
@@ -438,6 +443,9 @@ failed:
 
     acb->common.cb(acb->common.opaque, (acb->ret > 0 ? 0 : acb->ret));
     acb->status = 0;
+
+    if (buf)
+        g_free(buf);
 
     qemu_aio_unref(acb);
 }
@@ -697,8 +705,10 @@ static BlockAIOCB *rbd_start_aio(BlockDriverState *bs,
 				s->cipher_key,
                                 s->iv, (unsigned char *) encrypt_buf,
 				s->encrypt_ctx, BDRV_SECTOR_SIZE);
-	     if (len < 0)
+	     if (len != qiov->size) {
 		error_report("failed to encrypt\n");
+	        goto failed;
+             }
 	     /* swap acb->bounce with encrypted buf and free acb->bounce */
 	     tmp_buf = acb->bounce;
 	     acb->bounce = encrypt_buf;
@@ -751,6 +761,8 @@ failed:
     g_free(rcb);
     qemu_vfree(acb->bounce);
     qemu_aio_unref(acb);
+    if (tmp_buf)
+        qemu_vfree(tmp_buf);
     return NULL;
 }
 
