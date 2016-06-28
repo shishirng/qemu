@@ -53,7 +53,7 @@ Build-Depends: debhelper (>= 9),
 # audio-drv-list += pa
  libpulse-dev,
 # --enable-rbd		linux-*
- librados-dev [linux-any], librbd-dev [linux-any],
+ librados-dev [linux-any], librbd-dev [linux-any], libssl-dev [linux-any],
 # --enable-vnc-sasl
  libsasl2-dev,
 # --enable-sdl

@@ -2861,7 +2861,7 @@ int main(void) {
     return 0;
 }
 EOF
-  rbd_libs="-lrbd -lrados"
+  rbd_libs="-lrbd -lrados -lssl -lcrypto"
   if compile_prog "" "$rbd_libs" ; then
     rbd=yes
   else
