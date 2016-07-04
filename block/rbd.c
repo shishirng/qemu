@@ -559,12 +559,12 @@ static int qemu_rbd_open(BlockDriverState *bs, QDict *options, int flags,
     encryption_key = qemu_opt_get(opts, "encryption_key");
     if (encryption_key != NULL) {
 	if (strlen(encryption_key) != 80) {
-		error_setg(&local_error, "Bad encryption key");
+		error_setg(&local_err, "Bad encryption key");
 		goto failed_open;
 	}
 	s->encrypted = 1;
-	strncpy(s->cipher_key, encryption_key, 64);
-	strncpy(s->iv, encryption_key + 64, 16);
+	strncpy((char*)s->cipher_key, encryption_key, 64);
+	strncpy((char*)s->iv, encryption_key + 64, 16);
 
 	/* initialize the engines */
 	sbs_init_decrypt_engine(&s->decrypt_ctx, s->cipher_key, s->iv);
