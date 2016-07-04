@@ -476,6 +476,7 @@ static int qemu_rbd_open(BlockDriverState *bs, QDict *options, int flags,
     QemuOpts *opts;
     Error *local_err = NULL;
     const char *filename;
+    const char *encryption_key = NULL;
     int r;
 
     opts = qemu_opts_create(&runtime_opts, NULL, 0, &error_abort);
@@ -555,11 +556,15 @@ static int qemu_rbd_open(BlockDriverState *bs, QDict *options, int flags,
 
     /* parse opts and figure out if volume is encrypted
        allocate space for key and iv  and save them */
-    if (s->encrypted == 1) {
-
-        /* for test set the key */
-        s->cipher_key = (unsigned char *) g_strdup("7190c8bc27ac4a1bbe1ab1cf55cf3b097190c8bc27ac4a1bbe1ab1cf55cf3b09");
-        s->iv = (unsigned char *) g_strdup("dcbfdd41e40f74a2");
+    encryption_key = qemu_opt_get(opts, "encryption_key");
+    if (encryption_key != NULL) {
+	if (strlen(encryption_key) != 80) {
+		error_setg(&local_err, "Bad encryption key");
+		goto failed_open;
+	}
+	s->encrypted = 1;
+	strncpy((char*)s->cipher_key, encryption_key, 64);
+	strncpy((char*)s->iv, encryption_key + 64, 16);
 
 	/* initialize the engines */
 	sbs_init_decrypt_engine(&s->decrypt_ctx, s->cipher_key, s->iv);
