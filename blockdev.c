@@ -650,6 +650,10 @@ QemuOptsList qemu_legacy_drive_opts = {
             .type = QEMU_OPT_STRING,
             .help = "disk serial number",
         },{
+            .name = "encryption_key",
+            .type = QEMU_OPT_STRING,
+            .help = "encryption key",
+        },{
             .name = "file",
             .type = QEMU_OPT_STRING,
             .help = "file name",
@@ -694,6 +698,7 @@ DriveInfo *drive_new(QemuOpts *all_opts, BlockInterfaceType block_default_type)
     bool read_only = false;
     bool copy_on_read;
     const char *serial;
+    const char *encryption_key;
     const char *filename;
     Error *local_err = NULL;
     int i;
@@ -978,6 +983,10 @@ DriveInfo *drive_new(QemuOpts *all_opts, BlockInterfaceType block_default_type)
         qdict_put(bs_opts, "rerror", qstring_from_str(rerror));
     }
 
+    encryption_key = qemu_opt_get(legacy_opts, "encryption_key");
+    if (encryption_key != NULL) {
+        qdict_put(bs_opts, "encryption_key", qstring_from_str(encryption_key));
+    }
     /* Actual block device init: Functionality shared with blockdev-add */
     blk = blockdev_init(filename, bs_opts, &local_err);
     bs_opts = NULL;

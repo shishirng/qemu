@@ -1255,6 +1255,7 @@ int bdrv_open_image(BlockDriverState **pbs, const char *filename,
     int ret;
     char *bdref_key_dot;
     const char *reference;
+    const char * encryption_key;
 
     assert(pbs);
     assert(*pbs == NULL);
@@ -1275,11 +1276,15 @@ int bdrv_open_image(BlockDriverState **pbs, const char *filename,
         QDECREF(image_options);
         goto done;
     }
-
+    encryption_key = qdict_get_try_str(options, "encryption_key");
+    if (encryption_key != NULL) {
+        qdict_put_obj(image_options, "encryption_key", QOBJECT(qstring_from_str(encryption_key)));
+    }
     ret = bdrv_open(pbs, filename, reference, image_options, flags, NULL, errp);
 
 done:
     qdict_del(options, bdref_key);
+    qdict_del(options, "encryption_key");
     return ret;
 }
 
