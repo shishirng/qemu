@@ -564,8 +564,8 @@ static int qemu_rbd_open(BlockDriverState *bs, QDict *options, int flags,
 		goto failed_open;
 	}
 	s->encrypted = 1;
-	strncpy((char*)s->cipher_key, encryption_key, 64);
-	strncpy((char*)s->iv, encryption_key + 64, 16);
+        s->cipher_key = (unsigned char *) g_strndup(encryption_key, 64);
+        s->iv = (unsigned char *) g_strndup(encryption_key + 64, 16);
 
 	/* initialize the engines */
 	sbs_init_decrypt_engine(&s->decrypt_ctx, s->cipher_key, s->iv);
